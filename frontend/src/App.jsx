@@ -29,8 +29,8 @@ export default function App() {
       <header>
         <h1>Galley fullstack test</h1>
         <p className="muted">
-          frontend (nginx + Vite) → backend (Go) → db (Postgres). Click below
-          to bump a counter through the whole stack.
+          frontend (nginx + Vite) → backend (Go) → cache (Redis) → db (Postgres).
+          Click below to bump a counter; identical clicks within 5s come from cache.
         </p>
       </header>
 
