@@ -10,14 +10,20 @@ services:
       POSTGRES_PASSWORD: app
       POSTGRES_DB: app
 
+  cache:
+    kind: cache
+    image: redis:7-alpine
+    expose: 6379
+
   backend:
     kind: api
     build:
       path: ./backend
     expose: 3000
-    depends_on: [db]
+    depends_on: [db, cache]
     env:
       DATABASE_URL: postgres://app:app@db:5432/app?sslmode=disable
+      REDIS_URL: redis://cache:6379/0
       PORT: "3000"
 
   frontend:
