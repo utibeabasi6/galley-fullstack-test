@@ -1,0 +1,28 @@
+version: 1
+
+services:
+  db:
+    kind: database
+    image: postgres:16-alpine
+    expose: 5432
+    env:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+
+  backend:
+    kind: web
+    build:
+      path: ./backend
+    expose: 3000
+    depends_on: [db]
+    env:
+      DATABASE_URL: postgres://app:app@db:5432/app?sslmode=disable
+      PORT: "3000"
+
+  frontend:
+    kind: web
+    build:
+      path: ./frontend
+    expose: 80
+    depends_on: [backend]

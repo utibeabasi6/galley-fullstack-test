@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vite/
+.DS_Store
+*.log
+
+# Backend build artifacts (railpack puts intermediates in the worktree
+# only on the build host; safe to ignore here too).
+/backend/server
+/backend/bin/
