@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Galley · Ops Dashboard</title>
+    <style>
+      :root {
+        --bg: #0e0f0e;
+        --paper: #17181a;
+        --rule: #2a2a28;
+        --ink: #eae5d9;
+        --muted: #a09c90;
+        --accent: #f08a4b;
+        --success: #6cc26c;
+        --error: #d36a5d;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+      main {
+        max-width: 720px;
+        margin: 3rem auto;
+        padding: 0 1.5rem;
+      }
+      .eyebrow {
+        margin: 0 0 0.4rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 0.7rem;
+      }
+      h1 {
+        margin: 0 0 0.4rem;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-size: 1.75rem;
+        font-weight: 600;
+        letter-spacing: -0.015em;
+      }
+      .lede {
+        margin: 0;
+        color: var(--muted);
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        max-width: 56ch;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        margin-top: 1.75rem;
+      }
+      .card {
+        background: var(--paper);
+        border: 1px solid var(--rule);
+        border-radius: 10px;
+        padding: 1rem 1.1rem;
+      }
+      .card .label {
+        margin: 0 0 0.5rem;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }
+      .card .value {
+        margin: 0;
+        font-size: 1.05rem;
+        word-break: break-all;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        border: 1px solid;
+      }
+      .pill::before {
+        content: '';
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .ok { color: var(--success); border-color: var(--success); background: rgba(108, 194, 108, 0.08); }
+      .down { color: var(--error); border-color: var(--error); background: rgba(211, 106, 93, 0.08); }
+      .warn { color: var(--accent); border-color: var(--accent); background: rgba(240, 138, 75, 0.08); }
+      table {
+        width: 100%;
+        margin-top: 1.5rem;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      th, td {
+        text-align: left;
+        padding: 0.55rem 0.75rem;
+        border-bottom: 1px solid var(--rule);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 0.7rem;
+      }
+      td.tail {
+        text-align: right;
+      }
+      footer {
+        margin-top: 2rem;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">galley · ops</p>
+      <h1>Operations dashboard</h1>
+      <p class="lede">
+        Internal view of the same preview the public frontend serves. Reads
+        <code>/api/health</code> on a 3s interval and pings <code>/api/hello</code>
+        once a minute to spot cache regressions.
+      </p>
+
+      <section class="grid">
+        <div class="card">
+          <p class="label">API</p>
+          <p class="value"><span id="api-pill" class="pill warn">starting</span></p>
+        </div>
+        <div class="card">
+          <p class="label">Last health</p>
+          <p class="value" id="last-health">—</p>
+        </div>
+        <div class="card">
+          <p class="label">Visits</p>
+          <p class="value" id="visits">—</p>
+        </div>
+        <div class="card">
+          <p class="label">Cache</p>
+          <p class="value"><span id="cache-pill" class="pill warn">unknown</span></p>
+        </div>
+      </section>
+
+      <table>
+        <thead>
+          <tr><th>Time</th><th>Path</th><th class="tail">Result</th></tr>
+        </thead>
+        <tbody id="log"></tbody>
+      </table>
+
+      <footer>
+        Operator-only view. The public app lives at the frontend service —
+        bumping the counter there is what populates this dashboard.
+      </footer>
+    </main>
+
+    <script>
+      const log = document.getElementById('log');
+      const apiPill = document.getElementById('api-pill');
+      const cachePill = document.getElementById('cache-pill');
+      const lastHealth = document.getElementById('last-health');
+      const visits = document.getElementById('visits');
+
+      // Build rows with safe DOM APIs only — no innerHTML, no template
+      // strings landing in the DOM. The error messages we render come from
+      // network failures (Error.toString) which can't be trusted to be
+      // html-safe, so plain textContent is the right choice.
+      function appendRow(path, ok, msg) {
+        const tr = document.createElement('tr');
+
+        const tTd = document.createElement('td');
+        tTd.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+        tr.appendChild(tTd);
+
+        const pTd = document.createElement('td');
+        const code = document.createElement('code');
+        code.textContent = path;
+        pTd.appendChild(code);
+        tr.appendChild(pTd);
+
+        const rTd = document.createElement('td');
+        rTd.className = 'tail';
+        const pill = document.createElement('span');
+        pill.className = ok ? 'pill ok' : 'pill down';
+        pill.textContent = ok ? 'ok' : msg;
+        rTd.appendChild(pill);
+        tr.appendChild(rTd);
+
+        log.prepend(tr);
+        while (log.children.length > 8) log.removeChild(log.lastChild);
+      }
+
+      function setPill(el, kind, label) {
+        el.className = 'pill ' + kind;
+        el.textContent = label;
+      }
+
+      async function checkHealth() {
+        try {
+          const res = await fetch('/api/health');
+          if (!res.ok) throw new Error(String(res.status));
+          await res.json();
+          setPill(apiPill, 'ok', 'healthy');
+          lastHealth.textContent = new Date().toLocaleTimeString('en-US');
+          appendRow('/api/health', true);
+        } catch (err) {
+          setPill(apiPill, 'down', 'down');
+          appendRow('/api/health', false, String(err));
+        }
+      }
+
+      async function pingHello() {
+        try {
+          const res = await fetch('/api/hello');
+          if (!res.ok) throw new Error(String(res.status));
+          const data = await res.json();
+          visits.textContent = data.visits ?? '—';
+          if (data.cached === true) {
+            setPill(cachePill, 'ok', 'cache hit');
+          } else if (data.cached === false) {
+            setPill(cachePill, 'warn', 'database');
+          }
+          appendRow('/api/hello', true);
+        } catch (err) {
+          appendRow('/api/hello', false, String(err));
+        }
+      }
+
+      checkHealth();
+      pingHello();
+      setInterval(checkHealth, 3000);
+      setInterval(pingHello, 60000);
+    </script>
+  </body>
+</html>

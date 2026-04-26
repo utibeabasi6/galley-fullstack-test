@@ -32,3 +32,10 @@ services:
       path: ./frontend
     expose: 80
     depends_on: [backend]
+
+  admin:
+    kind: web
+    build:
+      path: ./admin
+    expose: 80
+    depends_on: [backend]
